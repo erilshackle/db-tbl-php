@@ -213,9 +213,10 @@ YAML;
     {
         $file =  $this->get('include');
 
-        if ($file !== null && empty($file)) {
+        if ($file !== null && !empty($file)) {
             if (is_file($file)) {
-                @include_once($file);
+                include_once($file);
+                // file included
             }
         }
     }
