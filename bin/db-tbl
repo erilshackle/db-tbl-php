@@ -1,0 +1,8 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . '/../src/autoload.helper.php';
+
+use Eril\DbTbl\Cli\DbTblCommand;
+
+(new DbTblCommand())->run($argv);
