@@ -126,6 +126,7 @@ PHP;
         $code = '';
         foreach ($tables as $table) {
             $className = 'Tbl' . $this->tableClassName($table);
+            $alias = $this->naming->getTableAlias($table);
             $columns   = $this->schema->getColumns($table);
             $enums     = $this->schema->getEnums($table);
             $fks       = array_filter(
@@ -133,7 +134,8 @@ PHP;
                 fn($fk) => $fk['from_table'] === $table
             );
 
-            $code .= "final class {$className} extends ATable\n{\n";
+            $code .= "    /** `table: $table` (alias: `$alias`)*/";
+            $code .= "final class {$className}\n{\n";
 
             // Columns
             foreach ($columns as $column) {
@@ -150,15 +152,16 @@ PHP;
 
             // Foreign keys
             if (!empty($fks)) {
-                $code .= "\n    // Foreign keys\n\n";
+                $code .= "\n";
                 foreach ($fks as $fk) {
-                    $code .= "    /** FK → {$fk['to_table']}.{$fk['to_column']} */\n";
-                    $code .= "    public const fk_{$fk['to_table']} = '{$fk['from_column']}';\n";
+                    $code .= "    /** {$fk['to_table']} → {$fk['to_column']} */";
+                    $code .= " public const fk_{$fk['to_table']} = '{$fk['from_column']}';\n";
                 }
             }
 
             $code .= "\n    public const __table = '{$table}';\n";
-            $code .= "    public const __alias = '{$this->naming->getTableAlias($table)}';\n";
+            $code .= "    public const __alias = '{$alias} {$alias}';\n";
+            // todo $code .= "    public const __pk = '{$primaryKey}';\n";
             $code .= "}\n\n";
         }
 

@@ -66,6 +66,7 @@ final class Psr4TblGenerator extends Generator
     {
         $namespace = rtrim($this->config->get('output.namespace'), '\\');
         $className = 'Tbl' . $this->tableClassName($table);
+        $alias     = $this->naming->getTableAlias($table);
         $columns   = $this->schema->getColumns($table);
         $enums     = $this->schema->getEnums($table);
         $fks       = array_filter($foreignKeys, fn($fk) => $fk['from_table'] === $table);
@@ -82,7 +83,7 @@ final class Psr4TblGenerator extends Generator
 
         // ENUMs
         if (!empty($enums)) {
-            $content .= "\n    // Enum values\n";
+            $content .= "\n";
             foreach ($enums as $name => $value) {
                 $content .= "    public const enum_{$name} = '{$value}';\n";
             }
@@ -90,15 +91,15 @@ final class Psr4TblGenerator extends Generator
 
         // Foreign Keys
         if (!empty($fks)) {
-            $content .= "\n    // Foreign Keys\n";
+            $content .= "\n";
             foreach ($fks as $fk) {
-                $content .= "    /** FK → {$fk['to_table']}.{$fk['to_column']} */\n";
-                $content .= "    public const fk_{$fk['to_table']} = '{$fk['from_column']}';\n";
+                $content .= "    /** {$fk['to_table']} → {$fk['to_column']} */";
+                $content .= " public const fk_{$fk['to_table']} = '{$fk['from_column']}';\n";
             }
         }
 
         $content .= "\n    public const __table = '{$table}';\n";
-        $content .= "    public const __alias = '{$this->naming->getTableAlias($table)}';\n";
+        $content .= "    public const __alias = '{$table} {$alias}';\n";
         $content .= "}\n";
 
         $this->writeFile($className, $content);
