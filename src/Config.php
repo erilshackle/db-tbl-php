@@ -1,8 +1,8 @@
 <?php
-// src/Config.php
 
 namespace Eril\DbTbl;
 
+use Eril\DbTbl\Cli\CliPrinter;
 use Symfony\Component\Yaml\Yaml;
 use Exception;
 
@@ -19,102 +19,174 @@ class Config
         $this->load();
     }
 
+    // ------------------------------------------------------------------
+    // Bootstrapping
+    // ------------------------------------------------------------------
+
     private function load(): void
     {
-        // Se arquivo não existe, cria com template limpo
         if (!file_exists($this->configFile)) {
             $this->isNew = true;
             $this->createCleanTemplate();
             return;
         }
 
-        // Carrega do YAML existente
         try {
             $yamlConfig = Yaml::parseFile($this->configFile);
 
-            // Configuração mínima para funcionar
-            $defaults = [
-                'database' => [
-                    'driver' => 'mysql',
-                    'connection' => null,
-                    'host' => 'localhost',        // DEFAULT literal
-                    'port' => 3306,               // DEFAULT literal  
-                    'name' => '',                  // VAZIO - requerido
-                    'user' => 'root',              // DEFAULT literal
-                    'password' => '',              // DEFAULT vazio
-                    'path' => 'database.sqlite'   // DEFAULT literal
-                ],
-                'output' => [
-                    'path' => './',
-                    'namespace' => ''
-                ]
-            ];
+            $this->config = array_replace_recursive(
+                $this->defaultConfig(),
+                $yamlConfig ?? []
+            );
 
-            // Merge mantendo valores do usuário
-            $this->config = array_replace_recursive($defaults, $yamlConfig);
-
+            $this->validate();
             $this->isNew = false;
         } catch (Exception $e) {
-            throw new Exception("Error parsing YAML config: " . $e->getMessage());
+            throw new Exception(
+                "Error loading config file '{$this->configFile}': " . $e->getMessage()
+            );
         }
+
         $this->runAutoloaders();
     }
+
+    private function defaultConfig(): array
+    {
+        return [
+            'include' => null,
+
+            'database' => [
+                'driver' => 'mysql',
+                'connection' => null,
+                'host' => 'localhost',
+                'port' => 3306,
+                'name' => '',
+                'user' => 'root',
+                'password' => '',
+                'path' => 'database.sqlite',
+            ],
+
+            'output' => [
+                'mode' => 'file',
+                'path' => './',
+                'namespace' => '',
+                'naming' => [
+                    'strategy' => 'full',
+                    'abbreviation' => [
+                        'max_length' => 15,
+                        'dictionary_lang' => 'en',
+                        'dictionary_path' => null,
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    private function validate(): void
+    {
+        $this->validateOutput();
+    }
+
+    private function validateOutput(): void
+    {
+        $mode = $this->getOutputMode();
+        $namespace = $this->getOutputNamespace();
+
+        if (!in_array($mode, ['file', 'psr4'], true)) {
+            throw new Exception(
+                "Invalid output.mode '{$mode}'. Allowed values: file, psr4."
+            );
+        }
+
+        if ($mode === 'psr4' && $namespace === '') {
+            throw new Exception(
+                "output.namespace is required when output.mode is 'psr4'."
+            );
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // YAML Template
+    // ------------------------------------------------------------------
 
     private function createCleanTemplate(): void
     {
         $template = <<<YAML
-# Autoload a file
-include: null  # Optional, used to manually autoload files outside composer
+# ------------------------------------------------------------
+# db-tbl configuration file
+#
+# Auto-generated on first run.
+# Delete this file to regenerate a clean template.
+# ------------------------------------------------------------
 
+# Optional: manually include a PHP file before execution
+include: null
+
+# ------------------------------------------------------------
 # Database configuration
+# ------------------------------------------------------------
 database:
-  ## Optional custom connection:
-  # connection: 'App\\Database::getConnection'
 
-  driver: mysql           # mysql or sqlite
-  
-  # For MySQL (use environment variables):
-  host: env(DB_HOST)      # or 'localhost'
-  port: env(DB_PORT)      # or 3306
-  name: env(DB_NAME)      # required for MySQL
-  user: env(DB_USER)      # or 'root'
-  password: env(DB_PASS)  # or ''
-  
-  ## For SQLite (driver: sqlite)
-  # path: env(DB_PATH)    # or 'database.sqlite'
+  # Optional custom connection resolver
+  # Must return a PDO instance
+  # Example: 'App\\\\Database::getConnection'
+  # connection: null
 
+  driver: mysql            # mysql | pgsql | sqlite
+
+  # For MySQL / PostgreSQL
+  host: env(DB_HOST)       # default: localhost
+  port: env(DB_PORT)       # default: 3306
+  name: env(DB_NAME)       # required
+  user: env(DB_USER)       # default: root
+  password: env(DB_PASS)  # default: empty
+
+  # SQLite only
+  # path: env(DB_PATH)     # e.g. database.sqlite
+
+# ------------------------------------------------------------
 # Output configuration
+# ------------------------------------------------------------
 output:
-  mode: "schema"          # global | schema | legacy
-  path: "./"              # Where to save Tbl.php
-  namespace: ""           # PHP namespace (optional for legacy mode)
-  
-  # Naming strategies for constants (fullname or abbreviated)
-  naming:
-    strategy: "full"      # full, short 
-    
-    # Abbreviation settings
-    abbreviation:
-      dictionary_lang: "en"    # 'en', 'pt', ou 'all'
-      dictionary_path: null    # custom dictionary path (relative to project)
-      max_length: 15           # max abbreviation length
 
+  # Output mode:
+  # - file  → generate all classes into one file
+  # - psr4  → generate one class per table (PSR-4)
+  mode: file
+
+  # Base output directory (always a directory)
+  path: "./"
+
+  # optional for file mode
+  # REQUIRED for psr4 mode
+  namespace: ""
+
+  # Naming rules
+  naming:
+    strategy: full          # full | short
+
+    abbreviation:
+      max_length: 15        # maximum length of generated names
+      dictionary_lang: en   # en | pt | es | all
+      dictionary_path: null # custom dictionary file (optional)
 YAML;
 
-        // Garante que o diretório existe
         $dir = dirname($this->configFile);
         if (!is_dir($dir)) {
             mkdir($dir, 0755, true);
         }
 
         if (file_put_contents($this->configFile, $template) === false) {
-            throw new Exception("Cannot create config file: " . $this->configFile);
+            throw new Exception("Cannot create config file: {$this->configFile}");
         }
 
-        // Carrega o template para a memória
         $this->config = Yaml::parse($template);
         $this->isNew = true;
     }
+
+    // ------------------------------------------------------------------
+    // Public API
+    // ------------------------------------------------------------------
 
     public function isNew(): bool
     {
@@ -146,139 +218,87 @@ YAML;
         return $yaml;
     }
 
-    /**
-     * Resolve environment variable placeholders
-     * Supports: DB_NAME, ${DB_NAME}, env(DB_NAME)
-     */
-    public function resolveEnvVars($value)
+    public function get(string $key, mixed $default = null): mixed
     {
-        if (!is_string($value)) {
-            return $value;
-        }
-
-        // Pattern para: env(DB_NAME)
-        if (preg_match('/^env\(\s*([A-Z_][A-Z0-9_]*)\s*\)$/', $value, $matches)) {
-            $envValue = getenv($matches[1]);
-            return $envValue !== false ? $envValue : $value;
-        }
-
-        // Pattern para: ${DB_NAME}
-        if (preg_match('/^\${\s*([A-Z_][A-Z0-9_]*)\s*}$/', $value, $matches)) {
-            $envValue = getenv($matches[1]);
-            return $envValue !== false ? $envValue : $value;
-        }
-
-        if (preg_match('/^[A-Z_][A-Z0-9_]*$/', $value)) {
-            // Formato: DB_NAME (apenas letras maiúsculas e underscore)
-            $envValue = getenv($value);
-            return $envValue !== false ? $envValue : $value;
-        }
-
-        return $value;
-    }
-
-    public function get(string $key, $default = null): mixed
-    {
-        $keys = explode('.', $key);
         $value = $this->config;
 
-        foreach ($keys as $k) {
-            if (!isset($value[$k])) {
+        foreach (explode('.', $key) as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
                 return $default;
             }
-            $value = $value[$k];
+            $value = $value[$segment];
         }
 
-        // Resolve environment variables before returning
         return $this->resolveEnvVars($value);
     }
 
-    public function set(string $key, $value): self
+    public function set(string $key, mixed $value): self
     {
-        $keys = explode('.', $key);
         $config = &$this->config;
 
-        foreach ($keys as $k) {
-            if (!isset($config[$k])) {
-                $config[$k] = [];
+        foreach (explode('.', $key) as $segment) {
+            if (!isset($config[$segment]) || !is_array($config[$segment])) {
+                $config[$segment] = [];
             }
-            $config = &$config[$k];
+            $config = &$config[$segment];
         }
 
         $config = $value;
         return $this;
     }
 
-    public function runAutoloaders()
-    {
-        $file =  $this->get('include');
+    // ------------------------------------------------------------------
+    // Output helpers
+    // ------------------------------------------------------------------
 
-        if ($file !== null && empty($file)) {
-            if (is_file($file)) {
-                @include_once($file);
-            }
-        }
-    }
-
-    public function getNamingConfig(): array
+    public function getOutputMode(): string
     {
-        return [
-            'table' => $this->get('output.naming.table', 'full'),
-            'column' => $this->get('output.naming.column', 'abbr'),
-            'foreign_key' => $this->get('output.naming.foreign_key', 'smart'),
-            'abbreviation' => [
-                'dictionary_path' => $this->get('output.naming.abbreviation.dictionary_path'),
-                'dictionary_lang' => $this->get('output.naming.abbreviation.dictionary_lang', 'en'),
-                'max_length' => $this->get('output.naming.abbreviation.max_length', 20),
-            ],
-        ];
-    }
-
-    public function getDatabaseName(): string
-    {
-        return $this->get('database.name', '');
+        return (string) $this->get('output.mode', 'file');
     }
 
     public function getOutputPath(): string
     {
-        return rtrim($this->get('output.path', './'), '/') . '/';
+        return rtrim((string) $this->get('output.path', './'), '/') . '/';
     }
 
-    public function getOutputFile(string $mode = 'classes'): string
+    public function getOutputNamespace(): string
     {
-        // Se foi definido um arquivo personalizado, usa ele
+        return trim((string) $this->get('output.namespace'));
+    }
+
+    public function getOutputFile(string $default = 'Tbl.php'): string
+    {
         if ($this->customOutputFile !== null) {
             return $this->getOutputPath() . $this->customOutputFile;
         }
 
-        switch ($mode) {
-            case 'global':
-                return $this->getOutputPath() . 'tbl_constants.php';
-            case 'schema':
-                return $this->getOutputPath() . 'DbTbles.php';
-            default:
-                // classes mode
-                return $this->getOutputPath() . 'Tbl.php';
-        }
+        return $this->getOutputPath() . $default;
     }
 
-    /**
-     * Define um nome de arquivo personalizado para a saída
-     * Útil para GlobalGenerator que precisa de arquivo diferente
-     */
     public function setOutputFile(string $filename): self
     {
         $this->customOutputFile = $filename;
         return $this;
     }
 
-    /**
-     * Reseta o nome do arquivo de saída para o padrão
-     */
     public function resetOutputFile(): self
     {
         $this->customOutputFile = null;
         return $this;
+    }
+
+    // ------------------------------------------------------------------
+    // Database helpers
+    // ------------------------------------------------------------------
+
+    public function getDatabaseName(): string
+    {
+        return (string) $this->get('database.name', '');
+    }
+
+    public function getDriver(): string
+    {
+        return (string) $this->get('database.driver', 'mysql');
     }
 
     public function hasConnectionCallback(): bool
@@ -289,28 +309,75 @@ YAML;
     public function getConnectionCallback(): ?callable
     {
         $callback = $this->get('database.connection');
-        if (!$callback) return null;
+        if (!$callback) {
+            return null;
+        }
 
         if (is_string($callback)) {
             if (str_contains($callback, '::')) {
-                list($class, $method) = explode('::', $callback, 2);
-                return function () use ($class, $method) {
-                    if (!method_exists($class, $method)) {
-                        throw new Exception("Undefined class or method for connection callback: " . $class . '::' . $method . '()');
-                    }
-                    return $class::$method();
-                };
-            } elseif (function_exists($callback)) {
+                [$class, $method] = explode('::', $callback, 2);
+                return fn () => $class::$method();
+            }
+
+            if (function_exists($callback)) {
                 return $callback;
             }
         }
 
-        throw new Exception("Invalid connection callback");
+        throw new Exception("Invalid database.connection callback");
     }
 
-    public function getDriver(): string
+    // ------------------------------------------------------------------
+    // Naming configuration (mantido para compatibilidade)
+    // ------------------------------------------------------------------
+
+    public function getNamingConfig(): array
     {
-        return (string) $this->get('database.driver', 'mysql');
+        return [
+            'table' => $this->get('output.naming.strategy', 'full'),
+            'column' => $this->get('output.naming.strategy', 'full'),
+            'foreign_key' => $this->get('output.naming.strategy', 'full'),
+            'abbreviation' => [
+                'dictionary_path' => $this->get('output.naming.abbreviation.dictionary_path'),
+                'dictionary_lang' => $this->get('output.naming.abbreviation.dictionary_lang', 'en'),
+                'max_length' => $this->get('output.naming.abbreviation.max_length', 15),
+            ],
+        ];
+    }
+
+    // ------------------------------------------------------------------
+    // Utilities
+    // ------------------------------------------------------------------
+
+    private function resolveEnvVars(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        if (preg_match('/^env\(([^)]+)\)$/', $value, $m)) {
+            return getenv($m[1]) ?: $value;
+        }
+
+        if (preg_match('/^\${([^}]+)}$/', $value, $m)) {
+            return getenv($m[1]) ?: $value;
+        }
+
+        if (preg_match('/^[A-Z_][A-Z0-9_]*$/', $value)) {
+            return getenv($value) ?: $value;
+        }
+
+        return $value;
+    }
+
+    private function runAutoloaders(): void
+    {
+        $file = $this->get('include');
+
+        if ($file && is_file($file)) {
+            include_once $file;
+            CliPrinter::info("file included: $file");
+        }
     }
 
     public function getConfigFile(): string
@@ -320,6 +387,6 @@ YAML;
 
     public function getConfigFileName(): string
     {
-        return $this->configFile ? basename($this->configFile) : '';
+        return basename($this->configFile);
     }
 }

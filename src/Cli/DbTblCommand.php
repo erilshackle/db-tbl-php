@@ -81,11 +81,21 @@ final class DbTblCommand
     private function execute(): void
     {
 
-        $generator =  new FileTblGenerator(
-            $this->schema,
-            $this->config,
-            $this->check
-        );
+        $mode = $this->config->getOutputMode();
+
+        if ($mode == 'file') {
+            $generator =  new FileTblGenerator(
+                $this->schema,
+                $this->config,
+                $this->check
+            );
+        } else {
+            $generator =  new Psr4TblGenerator(
+                $this->schema,
+                $this->config,
+                $this->check
+            );
+        }
 
         $generator->run();
     }
