@@ -8,7 +8,8 @@ use Eril\DbTbl\Resolvers\ConnectionResolver;
 use Eril\DbTbl\Schema\MySqlSchemaReader;
 use Eril\DbTbl\Schema\SchemaReaderInterface;
 use Eril\DbTbl\Config;
-use Eril\DbTbl\Generators\TblClassesGenerator;
+use Eril\DbTbl\Generators\FileTblGenerator;
+use Eril\DbTbl\Generators\Psr4TblGenerator;
 use PDO;
 use RuntimeException;
 
@@ -79,7 +80,8 @@ final class DbTblCommand
 
     private function execute(): void
     {
-        $generator = new TblClassesGenerator(
+
+        $generator =  new FileTblGenerator(
             $this->schema,
             $this->config,
             $this->check
