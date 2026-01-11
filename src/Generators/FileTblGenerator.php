@@ -35,7 +35,6 @@ final class FileTblGenerator extends Generator
         $code .= $this->generateHeader($schemaHash);
         $code .= $this->generateNamespace();
         $code .= $this->generateTblRegistry($tables);
-        $code .= $this->generateAbstractTbl();
         $code .= $this->generateTableClasses($tables, $foreignKeys);
         $code .= "\n// end of auto-generated file\n";
 
@@ -97,25 +96,6 @@ PHP;
 
         return $code;
     }
-
-    private function generateAbstractTbl(): string
-    {
-        return <<<PHP
-abstract class ATable
-{
-
-    public function __get(string \$name)
-    {
-        if (defined(static::class . "::\$name")) {
-            return constant(static::class . "::\$name");
-        }
-        throw new \RuntimeException("Property '\$name' is not defined in " . static::class);
-    }
-}
-
-PHP;
-    }
-
 
     /**
      * Generates one class per table

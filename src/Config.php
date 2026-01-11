@@ -150,10 +150,15 @@ database:
 # ------------------------------------------------------------
 output:
 
+  # Output mode:
+  # - file  → generate all classes into one file
+  # - psr4  → generate one class per table (PSR-4)
+  mode: file
+
   # Base output directory (always a directory)
   path: "./"
 
-  # REQUIRED for --psr4 mode
+  # REQUIRED for psr4 mode
   namespace: ""
 
   # Naming rules

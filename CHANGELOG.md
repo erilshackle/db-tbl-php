@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-01-11
+
+### Added
+- feat(cli): enable dedicated psr-4 output mode and add safety checks
+
+### Changed
+- refactor(generator): standardize table metadata generation
+- docs: update CHANGELOG.md
+- Merge branch 'main' of https://github.com/erilshackle/db-tbl-php
+
 ## [1.1.0] - 2026-01-10
 
 ### Added

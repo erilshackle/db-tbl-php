@@ -42,7 +42,9 @@ abstract class Generator
         );
 
         $this->ensureDirectory();
-        $this->write($content, count($tables), count($foreignKeys));
+        if(!empty($content)){
+            $this->write($content, count($tables), count($foreignKeys));
+        }
     }
 
     protected function ensureDirectory(): void

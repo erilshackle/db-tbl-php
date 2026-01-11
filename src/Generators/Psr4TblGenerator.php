@@ -41,7 +41,10 @@ final class Psr4TblGenerator extends Generator
             $this->writeTableClass($table, $foreignKeys);
         }
 
-        return $this->generateTblRegistry($tables, $schemaHash); // Nothing to return; all files written individually
+        $content = $this->generateTblRegistry($tables, $schemaHash);
+        // $this->writeFile('Tbl', $content);
+        // Nothing to return; all files written individually
+        return $content;
     }
 
     // ------------------------------------------------------------------
@@ -68,43 +71,59 @@ final class Psr4TblGenerator extends Generator
         $namespace = rtrim($this->config->get('output.namespace'), '\\');
         $className = 'Tbl' . $this->tableClassName($table);
         $alias     = $this->naming->getTableAlias($table);
-        $columns   = $this->schema->getColumns($table);
-        $enums     = $this->schema->getEnums($table);
-        $fks       = array_filter($foreignKeys, fn($fk) => $fk['from_table'] === $table);
 
-        $content  = "<?php\n\n";
-        $content .= "namespace {$namespace};\n\n";
-        $content .= $this->generateClassDoc($table);
-        $content .= "final class {$className}\n{\n";
+        $columns = $this->schema->getColumns($table);
+        $enums   = $this->schema->getEnums($table);
+        $fks     = array_filter($foreignKeys, fn($fk) => $fk['from_table'] === $table);
+
+        $code  = "<?php\n\n";
+        $code .= "namespace {$namespace};\n\n";
+        $code .= "/** `table: {$table}` (alias: `{$alias}`) */\n";
+        $code .= "final class {$className}\n{\n";
+
+        $code .= "    public const __table = '{$table}';\n";
+        $code .= "    public const __alias = '{$table} {$alias}';\n\n";
 
         // Columns
         foreach ($columns as $column) {
-            $content .= "    public const {$column} = '{$column}';\n";
+            $code .= "    /** column: {$column} */\n";
+            $code .= "    public const {$column} = '{$column}';\n";
         }
 
-        // ENUMs
+        // Enums
         if (!empty($enums)) {
-            $content .= "\n";
+            $grouped = [];
             foreach ($enums as $name => $value) {
-                $content .= "    public const enum_{$name} = '{$value}';\n";
+                [$col] = explode('_', $name, 2);
+                $grouped[$col][] = $value;
+            }
+
+            foreach ($grouped as $col => $values) {
+                $list = implode('|', $values);
+                $code .= "\n    /** enum {$col}: {$list} */\n";
+                foreach ($values as $val) {
+                    $const = strtolower($col . '_' . $val);
+                    $const = preg_replace('/[^a-z0-9_]/', '_', $const);
+                    $code .= "    public const enum_{$const} = '{$val}';\n";
+                }
             }
         }
 
-        // Foreign Keys
+        // Foreign keys
         if (!empty($fks)) {
-            $content .= "\n";
+            $code .= "\n";
             foreach ($fks as $fk) {
-                $content .= "    /** {$fk['to_table']} → {$fk['to_column']} */";
-                $content .= " public const fk_{$fk['to_table']} = '{$fk['from_column']}';\n";
+                $fkConst = $this->naming->getForeignKeyConstName($fk['to_table'], false);
+                $code .= "    /** references `{$fk['to_table']}` → `{$fk['to_column']}` */\n";
+                $code .= "    public const {$fkConst} = '{$fk['from_column']}';\n";
             }
         }
 
-        $content .= "\n    public const __table = '{$table}';\n";
-        $content .= "    public const __alias = '{$table} {$alias}';\n";
-        $content .= "}\n";
+        $code .= "}\n";
 
-        $this->writeFile($className, $content);
+        $this->writeFile($className, $code);
     }
+
 
     private function generateTblRegistry(array $tables, string $schemaHash): string
     {
@@ -189,8 +208,5 @@ PHP;
     // ------------------------------------------------------------------
     // Instruction Autoload
     // ------------------------------------------------------------------
-    protected function printInstructions(): void
-    {
-       
-    }
+    protected function printInstructions(): void {}
 }

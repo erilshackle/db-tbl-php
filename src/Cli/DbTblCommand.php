@@ -82,7 +82,7 @@ final class DbTblCommand
 
     private function execute(): void
     {
-        $mode = $this->mode ?? 'file';
+        $mode = $this->mode ?? $this->config->getOutputMode();
 
         if ($mode === 'psr4') {
             $outputPath = $this->config->getOutputPath();
@@ -123,19 +123,30 @@ final class DbTblCommand
         if (empty($files)) {
             return;
         }
+        $isUpdate = false;
+        $default = 'N';
 
         CliPrinter::warnIcon("The output directory already contains PHP files:");
         foreach ($files as $file) {
-            CliPrinter::line("  - " . basename($file), 'yellow');
+            $filename = basename($file);
+            if ($filename == 'Tbl.php') {
+                $isUpdate = true;
+            };
+            CliPrinter::line("  - " . $filename, 'yellow');
         }
 
         CliPrinter::line();
         CliPrinter::warn("Generating in this directory may overwrite existing classes.");
-        CliPrinter::out("Continue? [y/N]: ", 'bold');
+        if ($isUpdate) {
+            CliPrinter::out("Update classes? [Y/n]: ", 'bold');
+            $default = 'y';
+        } else {
+            CliPrinter::out("Continue? [y/N]: ", 'bold');
+        }
 
         $answer = trim(fgets(STDIN));
 
-        if (!in_array(strtolower($answer), ['y', 'yes'], true)) {
+        if (!in_array(strtolower($answer ?: $default), ['y', 'yes'], true)) {
             CliPrinter::info("Operation aborted by user.");
             exit(0);
         }
