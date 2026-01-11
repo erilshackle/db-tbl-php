@@ -19,6 +19,7 @@ final class DbTblCommand
     private PDO $pdo;
     private SchemaReaderInterface $schema;
     private ?string $output = null;
+    private ?string $mode = "file";
     private bool $check = false;
 
     public function run(array $argv): void
@@ -41,6 +42,7 @@ final class DbTblCommand
             match ($arg) {
                 '--check' => $this->check = true,
                 '--help', '-h' => $this->showHelp(),
+                '--psr4' => $this->mode = "psr4",
                 default => $arg[0] !== '-' && $this->output === null
                     ? $this->output = $arg
                     : null,
@@ -80,17 +82,26 @@ final class DbTblCommand
 
     private function execute(): void
     {
+        $mode = $this->mode ?? 'file';
 
-        $mode = $this->config->getOutputMode();
+        if ($mode === 'psr4') {
+            $outputPath = $this->config->getOutputPath();
 
-        if ($mode == 'file') {
-            $generator =  new FileTblGenerator(
+            if ($mode === 'psr4' && !$this->config->get('output.namespace')) {
+                throw new RuntimeException(
+                    "PSR-4 mode requires 'output.namespace' to be defined in dbtbl.yaml"
+                );
+            }
+
+            $this->confirmPsr4Overwrite($outputPath);
+
+            $generator = new Psr4TblGenerator(
                 $this->schema,
                 $this->config,
                 $this->check
             );
         } else {
-            $generator =  new Psr4TblGenerator(
+            $generator = new FileTblGenerator(
                 $this->schema,
                 $this->config,
                 $this->check
@@ -99,6 +110,37 @@ final class DbTblCommand
 
         $generator->run();
     }
+
+
+    private function confirmPsr4Overwrite(string $path): void
+    {
+        if (!is_dir($path)) {
+            return;
+        }
+
+        $files = glob(rtrim($path, '/') . '/*.php');
+
+        if (empty($files)) {
+            return;
+        }
+
+        CliPrinter::warnIcon("The output directory already contains PHP files:");
+        foreach ($files as $file) {
+            CliPrinter::line("  - " . basename($file), 'yellow');
+        }
+
+        CliPrinter::line();
+        CliPrinter::warn("Generating in this directory may overwrite existing classes.");
+        CliPrinter::out("Continue? [y/N]: ", 'bold');
+
+        $answer = trim(fgets(STDIN));
+
+        if (!in_array(strtolower($answer), ['y', 'yes'], true)) {
+            CliPrinter::info("Operation aborted by user.");
+            exit(0);
+        }
+    }
+
 
     private function showHelp(): void
     {

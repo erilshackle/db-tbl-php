@@ -18,7 +18,7 @@ final class CliPrinter
 
     /* ---------- Core ---------- */
 
-    private static function out(string $text, ?string $color = null): void
+    public static function out(string $text, ?string $color = null): void
     {
         $code = self::$colors[$color] ?? '';
         echo $code . $text . self::$colors['reset'];

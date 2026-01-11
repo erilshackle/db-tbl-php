@@ -131,15 +131,13 @@ abstract class Generator
         $this->printInstructions();
     }
 
-    private function printInstructions(): void
+    protected function printInstructions(): void
     {
-        $namespace  = $this->config->get('output.namespace');
         $outputFile = $this->config->getOutputFile();
         $relative   = str_replace(getcwd() . DIRECTORY_SEPARATOR, '', $outputFile);
 
         CliPrinter::line('');
         CliPrinter::info("To use generated classes globally, add to \033[1mcomposer.json:");
-
 
         CliPrinter::line("  \"autoload\": {");
         CliPrinter::line("    \"files\": [");
@@ -149,6 +147,5 @@ abstract class Generator
 
         CliPrinter::line('');
         CliPrinter::line('Then run: composer dump-autoload', 'magenta');
-        CliPrinter::line(str_repeat('-', 50));
     }
 }

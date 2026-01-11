@@ -2,6 +2,7 @@
 
 namespace Eril\DbTbl\Generators;
 
+use Eril\DbTbl\Cli\CliPrinter;
 use Eril\DbTbl\Config;
 use Eril\DbTbl\Resolvers\NamingResolver;
 use Eril\DbTbl\Schema\SchemaReaderInterface;
@@ -40,7 +41,7 @@ final class Psr4TblGenerator extends Generator
             $this->writeTableClass($table, $foreignKeys);
         }
 
-        return ''; // Nothing to return; all files written individually
+        return $this->generateTblRegistry($tables, $schemaHash); // Nothing to return; all files written individually
     }
 
     // ------------------------------------------------------------------
@@ -73,7 +74,7 @@ final class Psr4TblGenerator extends Generator
 
         $content  = "<?php\n\n";
         $content .= "namespace {$namespace};\n\n";
-        $content .= $this->generateHeader($table);
+        $content .= $this->generateClassDoc($table);
         $content .= "final class {$className}\n{\n";
 
         // Columns
@@ -105,7 +106,52 @@ final class Psr4TblGenerator extends Generator
         $this->writeFile($className, $content);
     }
 
-    private function generateHeader(string $table): string
+    private function generateTblRegistry(array $tables, string $schemaHash): string
+    {
+        $namespace = rtrim($this->config->get('output.namespace'), '\\');
+
+        $content  = "<?php\n\n";
+        $content .= "namespace {$namespace};\n\n";
+        $content .= $this->generateHeader($this->schema->getDatabaseName(), $schemaHash);
+        $content .= "final class Tbl\n{\n";
+
+        foreach ($tables as $table) {
+            $const = $this->naming->getTableConstName($table, 'full');
+            $content .= "    public const {$const} = '{$table}';\n";
+        }
+
+        $content .= "\n    // Table aliases\n";
+
+        foreach ($tables as $table) {
+            $const = $this->naming->getTableConstName($table, 'full');
+            $alias = $this->naming->getTableAlias($table);
+            $content .= "    public const as_{$const} = '{$table} {$alias}';\n";
+        }
+
+        $content .= "}\n\n";
+
+        return $content;
+    }
+
+    private function generateHeader(string $db, string $hash): string
+    {
+        $time = date('Y-m-d H:i:s');
+
+        return <<<PHP
+/**
+ * Database Schema: {$db}
+ *
+ * @schema-hash md5:{$hash}
+ * @generated   {$time}
+ * @tool        db-tbl
+ *
+ * ⚠ AUTO-GENERATED FILE — DO NOT EDIT
+ */
+
+PHP;
+    }
+
+    private function generateClassDoc(string $table): string
     {
         $time = date('Y-m-d H:i:s');
         $hash = md5($table); // optional lightweight hash
@@ -113,12 +159,8 @@ final class Psr4TblGenerator extends Generator
         return <<<PHP
 /**
  * Table class: {$table}
- *
- * @schema-hash md5:{$hash}
+ * 
  * @generated   {$time}
- * @tool        db-tbl
- *
- * ⚠ AUTO-GENERATED FILE — DO NOT EDIT
  */
 
 PHP;
@@ -141,5 +183,14 @@ PHP;
     {
         $name = $this->naming->getTableConstName($table);
         return str_replace(' ', '', ucwords(str_replace('_', ' ', $name)));
+    }
+
+
+    // ------------------------------------------------------------------
+    // Instruction Autoload
+    // ------------------------------------------------------------------
+    protected function printInstructions(): void
+    {
+       
     }
 }

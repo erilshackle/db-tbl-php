@@ -134,8 +134,12 @@ PHP;
                 fn($fk) => $fk['from_table'] === $table
             );
 
-            $code .= "    /** `table: $table` (alias: `$alias`)*/";
+            $code .= "    /** `table: $table` (alias: `$alias`)*/\n";
             $code .= "final class {$className}\n{\n";
+
+            $code .= "    public const __table = '{$table}';\n";
+            $code .= "    public const __alias = '{$table} {$alias}';\n\n";
+            // todo $code .= "    public const __pk = '{$primaryKey}';\n";
 
             // Columns
             foreach ($columns as $column) {
@@ -154,14 +158,12 @@ PHP;
             if (!empty($fks)) {
                 $code .= "\n";
                 foreach ($fks as $fk) {
-                    $code .= "    /** {$fk['to_table']} → {$fk['to_column']} */";
-                    $code .= " public const fk_{$fk['to_table']} = '{$fk['from_column']}';\n";
+                    $fkCol = $this->naming->getForeignKeyConstName($fk['to_table'], false);
+                    $code .= "    /** references `{$fk['to_table']}` → `{$fk['to_column']}` */";
+                    $code .= "  public const {$fkCol} = '{$fk['from_column']}';\n";
                 }
             }
 
-            $code .= "\n    public const __table = '{$table}';\n";
-            $code .= "    public const __alias = '{$alias} {$alias}';\n";
-            // todo $code .= "    public const __pk = '{$primaryKey}';\n";
             $code .= "}\n\n";
         }
 

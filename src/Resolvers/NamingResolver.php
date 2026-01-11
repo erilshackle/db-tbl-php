@@ -161,11 +161,12 @@ class NamingResolver
         return $name;
     }
 
-    public function getForeignKeyConstName(string $fromTable, string $toTable, $unique = true): string
+    public function getForeignKeyConstName(string $fromTable, string $toTable, $unique = false): string
     {
-        $strategy = $fromTable === null ? 'full' : $this->config['foreign_key'];
+        $strategy =  $this->config['foreign_key'];
         $baseName = $this->getForeignKeyName($fromTable, $toTable, $strategy);
-        return 'fk_' . $unique ? $this->getUniqueName($baseName) : ($baseName);
+        $baseName = trim($baseName,'_');
+        return 'fk_' . ($unique ? $this->getUniqueName($baseName) : $baseName);
     }
 
     // ====================== ESTRATÉGIAS SIMPLIFICADAS ======================
@@ -180,6 +181,7 @@ class NamingResolver
         };
     }
 
+    
     private function getColumnName(?string $table, string $column, string $strategy): string
     {
         $normalizedTable = $this->normalizeName($table);
