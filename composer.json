@@ -1,6 +1,6 @@
 {
     "name": "eril/db-tbl",
-    "description": "CLI tool that generates PHP table schema classes from your database. Provides structured access to tables, columns, foreign keys, and enums with schema change detection.",
+    "description": "PHP CLI tool to generate type-safe table schema classes from your database.",
     "homepage": "https://github.com/erilshackle/db-tbl-php",
     "type": "library",
     "keywords": [
@@ -37,10 +37,7 @@
     "autoload": {
         "psr-4": {
             "Eril\\DbTbl\\": "src/"
-        },
-        "files": [
-            "./dbtbl/Tbl.php"
-        ]
+        }
     },
     "bin": [
         "bin/db-tbl"
