@@ -37,7 +37,10 @@
     "autoload": {
         "psr-4": {
             "Eril\\DbTbl\\": "src/"
-        }
+        },
+        "files": [
+            "./dbtbl/Tbl.php"
+        ]
     },
     "bin": [
         "bin/db-tbl"

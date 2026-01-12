@@ -16,6 +16,7 @@ use Eril\DbTbl\Schema\SchemaReaderInterface;
 final class FileTblGenerator extends Generator
 {
     private NamingResolver $naming;
+    private TableClassRenderer $renderer;
 
     public function __construct(
         SchemaReaderInterface $schema,
@@ -24,7 +25,9 @@ final class FileTblGenerator extends Generator
     ) {
         parent::__construct($schema, $config, $checkMode);
         $this->naming = new NamingResolver($config->getNamingConfig());
+        $this->renderer = new TableClassRenderer($schema, $this->naming);
     }
+
 
     protected function generateContent(
         array $tables,
@@ -32,8 +35,8 @@ final class FileTblGenerator extends Generator
         ?string $schemaHash = null
     ): string {
         $code  = "<?php\n\n";
-        $code .= $this->generateHeader($schemaHash);
         $code .= $this->generateNamespace();
+        $code .= $this->generateHeader($schemaHash);
         $code .= $this->generateTblRegistry($tables);
         $code .= $this->generateTableClasses($tables, $foreignKeys);
         $code .= "\n// end of auto-generated file\n";
@@ -45,19 +48,25 @@ final class FileTblGenerator extends Generator
     // Sections
     // ------------------------------------------------------------------
 
-    private function generateHeader(?string $schemaHash): string
+    private function generateHeader(?string $hash): string
     {
         $time = date('Y-m-d H:i:s');
 
         return <<<PHP
 /**
- * Database table constants
+ * Table registry for the database schema
  *
- * @schema-hash md5:{$schemaHash}
+ * This class contains constants representing all tables in the
+ * database, including full table names and table aliases.
+ * It provides a central reference for type-safe access to tables
+ * throughout the application.
+ *
+ * @schema-hash md5:{$hash}
  * @generated   {$time}
  * @tool        db-tbl
  *
- * ⚠ AUTO-GENERATED FILE — DO NOT EDIT
+ * ⚠ AUTO-GENERATED FILE
+ * Any manual changes will be lost on regeneration.
  */
 
 PHP;
@@ -102,61 +111,13 @@ PHP;
      */
     private function generateTableClasses(array $tables, array $foreignKeys): string
     {
-
         $code = '';
+
         foreach ($tables as $table) {
-            $className = 'Tbl' . $this->tableClassName($table);
-            $alias = $this->naming->getTableAlias($table);
-            $columns   = $this->schema->getColumns($table);
-            $enums     = $this->schema->getEnums($table);
-            $fks       = array_filter(
-                $foreignKeys,
-                fn($fk) => $fk['from_table'] === $table
-            );
-
-            $code .= "    /** `table: $table` (alias: `$alias`)*/\n";
-            $code .= "final class {$className}\n{\n";
-
-            $code .= "    public const __table = '{$table}';\n";
-            $code .= "    public const __alias = '{$table} {$alias}';\n\n";
-            // todo $code .= "    public const __pk = '{$primaryKey}';\n";
-
-            // Columns
-            foreach ($columns as $column) {
-                $code .= "    public const {$column} = '{$column}';\n";
-            }
-
-            // Enums
-            if (!empty($enums)) {
-                $code .= "\n";
-                foreach ($enums as $name => $value) {
-                    $code .= "    public const enum_{$name} = '{$value}';\n";
-                }
-            }
-
-            // Foreign keys
-            if (!empty($fks)) {
-                $code .= "\n";
-                foreach ($fks as $fk) {
-                    $fkCol = $this->naming->getForeignKeyConstName($fk['to_table'], false);
-                    $code .= "    /** references `{$fk['to_table']}` → `{$fk['to_column']}` */";
-                    $code .= "  public const {$fkCol} = '{$fk['from_column']}';\n";
-                }
-            }
-
-            $code .= "}\n\n";
+            $code .= $this->renderer->render($table, $foreignKeys);
+            $code .= "\n\n";
         }
 
         return $code;
-    }
-
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
-
-    private function tableClassName(string $table): string
-    {
-        $name = $this->naming->getTableConstName($table);
-        return str_replace(' ', '', ucwords(str_replace('_', ' ', $name)));
     }
 }

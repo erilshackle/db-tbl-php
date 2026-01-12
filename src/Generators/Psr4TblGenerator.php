@@ -31,21 +31,28 @@ final class Psr4TblGenerator extends Generator
     /**
      * Generate all table classes in PSR-4 structure.
      */
-    protected function generateContent(array $tables, array $foreignKeys = [], ?string $schemaHash = null): string
-    {
-        // In PSR-4 mode, the content is written directly per file
-        // This method can return empty string
+    protected function generateContent(
+        array $tables,
+        array $foreignKeys = [],
+        ?string $schemaHash = null
+    ): string {
         $this->ensureNamespaceAndPath();
 
+        $renderer = new TableClassRenderer(
+            $this->schema,
+            $this->naming
+        );
+
         foreach ($tables as $table) {
-            $this->writeTableClass($table, $foreignKeys);
+            $this->writeClassFile(
+                $table,
+                $renderer->render($table, $foreignKeys)
+            );
         }
 
-        $content = $this->generateTblRegistry($tables, $schemaHash);
-        // $this->writeFile('Tbl', $content);
-        // Nothing to return; all files written individually
-        return $content;
+        return $this->generateTblRegistry($tables, $schemaHash);
     }
+
 
     // ------------------------------------------------------------------
     // Ensure proper output
@@ -66,63 +73,22 @@ final class Psr4TblGenerator extends Generator
     // ------------------------------------------------------------------
     // Write individual table class
     // ------------------------------------------------------------------
-    private function writeTableClass(string $table, array $foreignKeys): void
+    private function writeClassFile(string $table, string $classBody): void
     {
         $namespace = rtrim($this->config->get('output.namespace'), '\\');
         $className = 'Tbl' . $this->tableClassName($table);
-        $alias     = $this->naming->getTableAlias($table);
-
-        $columns = $this->schema->getColumns($table);
-        $enums   = $this->schema->getEnums($table);
-        $fks     = array_filter($foreignKeys, fn($fk) => $fk['from_table'] === $table);
 
         $code  = "<?php\n\n";
         $code .= "namespace {$namespace};\n\n";
-        $code .= "/** `table: {$table}` (alias: `{$alias}`) */\n";
-        $code .= "final class {$className}\n{\n";
+        $code .= $classBody;
 
-        $code .= "    public const __table = '{$table}';\n";
-        $code .= "    public const __alias = '{$table} {$alias}';\n\n";
+        $file = rtrim($this->config->getOutputPath(), '/') . "/{$className}.php";
 
-        // Columns
-        foreach ($columns as $column) {
-            $code .= "    /** column: {$column} */\n";
-            $code .= "    public const {$column} = '{$column}';\n";
+        if (file_put_contents($file, $code) === false) {
+            throw new RuntimeException("Failed to write: {$file}");
         }
-
-        // Enums
-        if (!empty($enums)) {
-            $grouped = [];
-            foreach ($enums as $name => $value) {
-                [$col] = explode('_', $name, 2);
-                $grouped[$col][] = $value;
-            }
-
-            foreach ($grouped as $col => $values) {
-                $list = implode('|', $values);
-                $code .= "\n    /** enum {$col}: {$list} */\n";
-                foreach ($values as $val) {
-                    $const = strtolower($col . '_' . $val);
-                    $const = preg_replace('/[^a-z0-9_]/', '_', $const);
-                    $code .= "    public const enum_{$const} = '{$val}';\n";
-                }
-            }
-        }
-
-        // Foreign keys
-        if (!empty($fks)) {
-            $code .= "\n";
-            foreach ($fks as $fk) {
-                $fkConst = $this->naming->getForeignKeyConstName($fk['to_table'], false);
-                $code .= "    /** references `{$fk['to_table']}` → `{$fk['to_column']}` */\n";
-                $code .= "    public const {$fkConst} = '{$fk['from_column']}';\n";
-            }
-        }
-
-        $code .= "}\n";
-
-        $this->writeFile($className, $code);
     }
+
 
 
     private function generateTblRegistry(array $tables, string $schemaHash): string
@@ -158,42 +124,22 @@ final class Psr4TblGenerator extends Generator
 
         return <<<PHP
 /**
- * Database Schema: {$db}
+ * Database schema mapping for "{$db}"
+ *
+ * This file is generated from the live database schema and
+ * provides a stable, type-safe reference to tables and columns.
  *
  * @schema-hash md5:{$hash}
  * @generated   {$time}
  * @tool        db-tbl
  *
- * ⚠ AUTO-GENERATED FILE — DO NOT EDIT
+ * ⚠ AUTO-GENERATED FILE
+ * Any manual changes will be lost on regeneration.
  */
 
 PHP;
     }
 
-    private function generateClassDoc(string $table): string
-    {
-        $time = date('Y-m-d H:i:s');
-        $hash = md5($table); // optional lightweight hash
-
-        return <<<PHP
-/**
- * Table class: {$table}
- * 
- * @generated   {$time}
- */
-
-PHP;
-    }
-
-    private function writeFile(string $className, string $content): void
-    {
-        $dir = rtrim($this->config->getOutputPath(), '/') . '/';
-        $filePath = "{$dir}{$className}.php";
-
-        if (file_put_contents($filePath, $content) === false) {
-            throw new RuntimeException("Failed to write table file: {$filePath}");
-        }
-    }
 
     // ------------------------------------------------------------------
     // Helpers

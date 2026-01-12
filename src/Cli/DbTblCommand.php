@@ -18,8 +18,8 @@ final class DbTblCommand
     private Config $config;
     private PDO $pdo;
     private SchemaReaderInterface $schema;
-    private ?string $output = null;
-    private ?string $mode = "file";
+
+    private ?string $mode = null;
     private bool $check = false;
 
     public function run(array $argv): void
@@ -34,30 +34,32 @@ final class DbTblCommand
         }
     }
 
+    // -------------------------------------------------
+    // CLI parsing
+    // -------------------------------------------------
     private function parseArgs(array $argv): void
     {
         foreach ($argv as $i => $arg) {
-            if ($i === 0) continue;
+            if ($i === 0) {
+                continue;
+            }
 
             match ($arg) {
                 '--check' => $this->check = true,
+                '--psr4'  => $this->mode  = 'psr4',
+                '--file'  => $this->mode  = 'file',
                 '--help', '-h' => $this->showHelp(),
-                '--psr4' => $this->mode = "psr4",
-                default => $arg[0] !== '-' && $this->output === null
-                    ? $this->output = $arg
-                    : null,
+                default => null,
             };
         }
     }
 
+    // -------------------------------------------------
+    // Bootstrap & config
+    // -------------------------------------------------
     private function bootstrap(): void
     {
         $this->config = new Config();
-
-        if ($this->output) {
-            $this->config->set('output.path', $this->output);
-            CliPrinter::info("Output path set to {$this->output}");
-        }
 
         if ($this->config->isNew()) {
             CliPrinter::success("Config created: {$this->config->getConfigFile()}");
@@ -66,6 +68,9 @@ final class DbTblCommand
         }
     }
 
+    // -------------------------------------------------
+    // Database connection
+    // -------------------------------------------------
     private function connect(): void
     {
         $this->pdo = ConnectionResolver::fromConfig($this->config);
@@ -80,37 +85,51 @@ final class DbTblCommand
         CliPrinter::success("Database connected ({$this->config->getDriver()})");
     }
 
+    // -------------------------------------------------
+    // Execution
+    // -------------------------------------------------
     private function execute(): void
     {
-        $mode = $this->mode ?? $this->config->getOutputMode();
-
-        if ($mode === 'psr4') {
-            $outputPath = $this->config->getOutputPath();
-
-            if ($mode === 'psr4' && !$this->config->get('output.namespace')) {
-                throw new RuntimeException(
-                    "PSR-4 mode requires 'output.namespace' to be defined in dbtbl.yaml"
-                );
-            }
-
-            $this->confirmPsr4Overwrite($outputPath);
-
-            $generator = new Psr4TblGenerator(
-                $this->schema,
-                $this->config,
-                $this->check
-            );
-        } else {
-            $generator = new FileTblGenerator(
-                $this->schema,
-                $this->config,
-                $this->check
-            );
-        }
-
+        $generator = $this->createGenerator();
         $generator->run();
     }
 
+    private function createGenerator()
+    {
+        $this->mode = $this->mode ?? $this->config->getOutputMode();
+        return match ($this->mode) {
+            'psr4' => $this->createPsr4Generator(),
+            default => new FileTblGenerator(
+                $this->schema,
+                $this->config,
+                $this->check
+            ),
+        };
+    }
+
+    // -------------------------------------------------
+    // PSR-4 handling
+    // -------------------------------------------------
+    private function createPsr4Generator(): Psr4TblGenerator
+    {
+        $this->validatePsr4Config();
+        $this->confirmPsr4Overwrite($this->config->getOutputPath());
+
+        return new Psr4TblGenerator(
+            $this->schema,
+            $this->config,
+            $this->check
+        );
+    }
+
+    private function validatePsr4Config(): void
+    {
+        if (!$this->config->get('output.namespace')) {
+            throw new RuntimeException(
+                "PSR-4 mode requires 'output.namespace' to be defined in dbtbl.yaml"
+            );
+        }
+    }
 
     private function confirmPsr4Overwrite(string $path): void
     {
@@ -119,51 +138,45 @@ final class DbTblCommand
         }
 
         $files = glob(rtrim($path, '/') . '/*.php');
-
         if (empty($files)) {
             return;
         }
-        $isUpdate = false;
-        $default = 'N';
 
         CliPrinter::warnIcon("The output directory already contains PHP files:");
         foreach ($files as $file) {
-            $filename = basename($file);
-            if ($filename == 'Tbl.php') {
-                $isUpdate = true;
-            };
-            CliPrinter::line("  - " . $filename, 'yellow');
+            CliPrinter::line('  - ' . basename($file), 'yellow');
         }
 
         CliPrinter::line();
         CliPrinter::warn("Generating in this directory may overwrite existing classes.");
-        if ($isUpdate) {
-            CliPrinter::out("Update classes? [Y/n]: ", 'bold');
-            $default = 'y';
-        } else {
-            CliPrinter::out("Continue? [y/N]: ", 'bold');
-        }
+        CliPrinter::out("Continue? [y/N]: ", 'bold');
 
         $answer = trim(fgets(STDIN));
 
-        if (!in_array(strtolower($answer ?: $default), ['y', 'yes'], true)) {
+        if (!in_array(strtolower($answer), ['y', 'yes'], true)) {
             CliPrinter::info("Operation aborted by user.");
             exit(0);
         }
     }
 
-
+    // -------------------------------------------------
+    // Help & errors
+    // -------------------------------------------------
     private function showHelp(): void
     {
         echo <<<HELP
 db-tbl — Generate schema-based table classes
 
 Usage:
-  db-tbl [output]
+  db-tbl
 
 Options:
-  --check     Compare schema hash
-  --help      Show this help
+  --psr4     Generate PSR-4 classes (one class per table)
+  --check    Compare schema hash
+  --help     Show this help
+
+Configuration:
+  All output settings are defined in dbtbl.yaml
 
 HELP;
         exit(0);
@@ -172,17 +185,14 @@ HELP;
     private function handleError(\Throwable $e): void
     {
         $error = $e->getMessage();
+        CliPrinter::errorIcon("Error: $error\n");
 
-        CliPrinter::errorIcon("Error: $error \n");
-
-        if (str_contains($error, 'DB_NAME') || str_contains($error, 'database name')) {
-            CliPrinter::warn("💡 Tip: Set 'database.name' in " . $this->config->getConfigFile());
-            CliPrinter::warn(" Try use environment variable: export DB_NAME=your_database");
-        } else 
-        if (str_contains($error, 'connection failed')) {
-            CliPrinter::warn("💡 Tip: Check your database credentials in " . $this->config->getConfigFile());
-            CliPrinter::warn("   Make sure your database server is running.\n");
+        if (str_contains($error, 'DB_NAME')) {
+            CliPrinter::warn("Tip: Set 'database.name' in {$this->config->getConfigFile()}");
+        } elseif (str_contains($error, 'connection failed')) {
+            CliPrinter::warn("Tip: Check your database credentials.");
         }
+
         exit(1);
     }
 }

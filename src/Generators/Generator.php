@@ -42,7 +42,7 @@ abstract class Generator
         );
 
         $this->ensureDirectory();
-        if(!empty($content)){
+        if (!empty($content)) {
             $this->write($content, count($tables), count($foreignKeys));
         }
     }
@@ -124,9 +124,7 @@ abstract class Generator
         $size = number_format(filesize($file) / (1024 / 1024), 0, '.', '.');
 
         CliPrinter::success("✓ Generated: {$file}");
-        // CliPrinter::line("  > Size: {$size} KB");
         CliPrinter::line("  > Tables: {$tables}");
-        CliPrinter::line("  > Foreign Keys: {$foreignKeys}");
         CliPrinter::line("  > Foreign Keys: {$foreignKeys}");
         CliPrinter::line("  > Database: " . $this->schema->getDatabaseName());
 
@@ -135,19 +133,17 @@ abstract class Generator
 
     protected function printInstructions(): void
     {
-        $outputFile = $this->config->getOutputFile();
-        $relative   = str_replace(getcwd() . DIRECTORY_SEPARATOR, '', $outputFile);
+        $file = str_replace(getcwd() . DIRECTORY_SEPARATOR, '', $this->config->getOutputFile());
 
         CliPrinter::line('');
-        CliPrinter::info("To use generated classes globally, add to \033[1mcomposer.json:");
+        CliPrinter::info("Add the generated classes to Composer autoload:");
 
         CliPrinter::line("  \"autoload\": {");
         CliPrinter::line("    \"files\": [");
-        CliPrinter::line("      \"{$relative}\"", 'bold');
+        CliPrinter::line("      \"{$file}\"", 'bold');
         CliPrinter::line("    ]");
         CliPrinter::line("  }");
-
         CliPrinter::line('');
-        CliPrinter::line('Then run: composer dump-autoload', 'magenta');
+        CliPrinter::info("Then run: composer dump-autoload");
     }
 }
